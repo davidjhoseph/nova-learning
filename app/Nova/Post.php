@@ -6,10 +6,19 @@ use Laravel\Nova\Fields\ID;
 use Illuminate\Http\Request;
 use Laravel\Nova\Fields\Text;
 use Laravel\Nova\Fields\Trix;
+use App\Nova\Metrics\PostCount;
+use App\Nova\Metrics\PostTrend;
+use Laravel\Nova\Fields\Select;
 use Laravel\Nova\Fields\Boolean;
-
+use App\Nova\Actions\PublishPost;
 use Laravel\Nova\Fields\DateTime;
+use App\Nova\Filters\PostCategory;
+use Laravel\Nova\Fields\BelongsTo;
+use App\Nova\Actions\UnpublishPost;
+use App\Nova\Filters\PostPublished;
+use Laravel\Nova\Fields\BelongsToMany;
 use Laravel\Nova\Http\Requests\NovaRequest;
+use App\Nova\Metrics\PostCategory as PostCat;
 
 class Post extends Resource
 {
@@ -19,6 +28,11 @@ class Post extends Resource
      * @var string
      */
     public static $model = 'App\Post';
+
+    public static function indexQuery(NovaRequest $request, $query)
+    {
+        return $query->where('user_id', $request->user()->id);
+    }
 
     /**
      * The single value that should be used to represent the resource when being displayed.
@@ -36,6 +50,13 @@ class Post extends Resource
         'id', 'title', 'body'
     ];
 
+    public function title () {
+        return $this->title . '-' . $this->category;
+    }
+    public function subtitle () {
+        return 'Author: ' . $this->user->name;
+    }
+
     /**
      * Get the fields displayed by the resource.
      *
@@ -46,11 +67,18 @@ class Post extends Resource
     {
         return [
             ID::make()->sortable(),
-            Text::make('title'),
-            Trix::make('body'),
-            // DataTime::make('Publish At'),
-            // DataTime::make('Publish Until'),
-            Boolean::make('Is Published')
+            Text::make('title')->rules('required'),
+            Trix::make('body')->rules('required'),
+            DateTime::make('Publish At', 'published_at')->hideFromIndex()->rules('after_or_equal:today'),
+            DateTime::make('Publish Until', 'published_until')->hideFromIndex()->rules('after_or_equal:published_at'),
+            Boolean::make('Is Published'),
+            Select::make('category')->options([
+                'news' => 'News',
+                'tutorials' => 'Tutorials',
+                'blogpost' => 'Blog Post',
+            ])->displayUsingLabels()->rules('required'),
+            BelongsTo::make('User'),
+            BelongsToMany::make('Tags')
         ];
     }
 
@@ -62,7 +90,11 @@ class Post extends Resource
      */
     public function cards(Request $request)
     {
-        return [];
+        return [
+            new PostCount,
+            new PostTrend,
+            new PostCat
+        ];
     }
 
     /**
@@ -73,7 +105,10 @@ class Post extends Resource
      */
     public function filters(Request $request)
     {
-        return [];
+        return [
+            new PostPublished,
+            new PostCategory
+        ];
     }
 
     /**
@@ -95,6 +130,9 @@ class Post extends Resource
      */
     public function actions(Request $request)
     {
-        return [];
+        return [
+            new PublishPost,
+            new UnpublishPost
+        ];
     }
 }
